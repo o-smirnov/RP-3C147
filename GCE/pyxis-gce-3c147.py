@@ -20,8 +20,9 @@ define('DATADISKSIZE',200,"default data disk size (in Gb) for VM instances")
 define('VMTYPE',"n1-standard-1","default VM type")
 
 define("VMNUM",1,"VM serial number")
-define('VMNAME_Template',E.USER+"-"+socket.gethostname().replace(".","-").lower()+"-$VMNUM","default VM name")
+define('VMNAME_Template',"${USER}-"+socket.gethostname().replace(".","-").lower()+"-$VMNUM","default VM name")
 
+define('USER',E.USER,"default username to be used on remote machine")
 
 def _remote_provision ():
   for repo in ("pyxis","meqtrees-cattery"):
@@ -79,18 +80,20 @@ def _remote_attach_disk (diskname,mount,clear):
   if len(mm) < 3 and not os.path.exists(mm[-1]):
     gc("ln -s $mount");
 
-def attach_disk (vmname="$VMNAME",diskname="${vmname}-data",disksize="$DATADISKSIZE",
-                 mount="/data",
+def attach_disk (vmname="$VMNAME",diskname="${vmname}-$mount",size="$DATADISKSIZE",
+                 mount="/data",ssd=False,
                  init=False,clear=False,mode="rw",autodelete=False):
-  name,diskname,disksize,mount = interpolate_locals("vmname diskname disksize mount")
+  name,diskname,disksize,mount = interpolate_locals("vmname diskname size mount")
+  diskname = diskname.lower().replace("/","");
   disks = get_disks();
   if diskname in disks and init:
     info("disk $diskname exists and init=True, recreating")
     gc("disks delete $diskname");
     del disks[diskname];
   if diskname not in disks:
-    info("disk $diskname does not exist, creating with size $disksize Gb")
-    gc("disks create $diskname --size $disksize")
+    disktype = "pd-ssd" if ssd else "pd-standard";
+    info("disk $diskname does not exist, creating type $disktype, size $disksize Gb")
+    gc("disks create $diskname --size $disksize --type $disktype")
     clear = False;
   # attach disk to VM
   gc("instances attach-disk $name --disk $diskname --mode $mode --device-name $diskname")
@@ -120,6 +123,7 @@ def delete_disk (*disknames):
 
 def delete_vm (vmname="$VMNAME"):
   """Deletes a GCE VM instance""";
+  name = interpolate_locals("vmname");
   gc("instances delete $name --quiet");
   info("deleted VM instance $name");
 
