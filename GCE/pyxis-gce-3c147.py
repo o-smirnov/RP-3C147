@@ -11,11 +11,13 @@ define('COMPZONE',"europe-west1-a","default GCE compute zone")
 # gcloud executable
 # includes PROJECT and COMPZONE in the command line
 gc = x.gcloud.args(before="compute --project $PROJECT",after="--zone $COMPZONE");
+gc1 = x.gcloud.args(before="compute --project $PROJECT");
 gco = xo.gcloud.args(before="compute --project $PROJECT",after="--zone $COMPZONE");
 gcr = xr.gcloud.args(before="compute --project $PROJECT",after="--zone $COMPZONE");
+gcr1 = xr.gcloud.args(before="compute --project $PROJECT");
 gcro = xro.gcloud.args(before="compute --project $PROJECT",after="--zone $COMPZONE");
 
-define('SNAPSHOT',"oms-papino-5","snapshot on which boot disk is to be based")
+define('SNAPSHOT',"oms-papino-8","snapshot on which boot disk is to be based")
 define('DATADISKSIZE',200,"default data disk size (in Gb) for VM instances")
 define('VMTYPE',"n1-standard-1","default VM type")
 
@@ -31,21 +33,28 @@ def _remote_provision ():
   info("VM provision complete");
 
 ## create VM
-def init_vm (vmname="$VMNAME",vmtype="$VMTYPE",reuse_boot=True,provision=True):
+def init_vm (vmname="$VMNAME",vmtype="$VMTYPE",reuse_boot=True,autodelete_boot=None,provision=True):
   """Creates a GCE VM instance""";
   name,vmtype = interpolate_locals("vmname vmtype");
   # check if a boot disk needs to be created
   disks = get_disks();
   if name in disks:
     if reuse_boot:
-      info("boot disk $name already exists and reuse_boot=True")
+      info("boot disk $name already exists, reusing (disable with reuse_boot=False)")
+      if autodelete_boot is None:
+        info("boot disk $name will not be auto-deleted when VM is destroyed")
+        autodelete_boot = False;
     else:
       gc("disks delete $name --quiet")
       del disks[name];
   if name not in disks:
     gc("disks create $name --source-snapshot $SNAPSHOT")
+    if autodelete_boot is None:
+      info("boot disk $name will be auto-deleted when VM is destroyed")
+      autodelete_boot = True;
   # create VM
-  gc("instances create $name --machine-type n1-standard-1 --disk name=$name mode=rw boot=yes auto-delete=yes");
+  scopes = "--scopes storage-rw"
+  gc("instances create $name --machine-type $vmtype --disk name=$name mode=rw boot=yes auto-delete=%s $scopes"%("yes" if autodelete_boot else "no"));
   info("created VM instance $name, type $vmtype")
   # provision with pyxis scripts in current directory
   if provision:
@@ -60,8 +69,8 @@ def provision_vm (vmname="$VMNAME"):
       break;
     if attempt is 1 and name not in get_vms():
       abort("no such VM $name")
-    warn("VM $name is not up yet (attempt #$attempt), waiting for 10 seconds and retrying");
-    time.sleep(10);
+    warn("VM $name is not up yet (attempt #$attempt), waiting for 5 seconds to retry");
+    time.sleep(5);
   else:
     abort("failed to connect to VM $name after $attempt tries")
   info("copied $files to VM, running provisioning command");
@@ -80,8 +89,8 @@ def _remote_attach_disk (diskname,mount,clear):
   if len(mm) < 3 and not os.path.exists(mm[-1]):
     gc("ln -s $mount");
 
-def attach_disk (vmname="$VMNAME",diskname="${vmname}-$mount",size="$DATADISKSIZE",
-                 mount="/data",ssd=False,
+def attach_disk (mount="data",diskname="${vmname}-$mount",vmname="$VMNAME",
+          			 size=None,snapshot=None,ssd=False,
                  init=False,clear=False,mode="rw",autodelete=False):
   name,diskname,disksize,mount = interpolate_locals("vmname diskname size mount")
   diskname = diskname.lower().replace("/","");
@@ -93,7 +102,9 @@ def attach_disk (vmname="$VMNAME",diskname="${vmname}-$mount",size="$DATADISKSIZ
   if diskname not in disks:
     disktype = "pd-ssd" if ssd else "pd-standard";
     info("disk $diskname does not exist, creating type $disktype, size $disksize Gb")
-    gc("disks create $diskname --size $disksize --type $disktype")
+    if not snapshot:
+      size = DATADISKSIZE;
+    gc("disks create $diskname ${--size <disksize} --type $disktype ${--source-snapshot <snapshot}");
     clear = False;
   # attach disk to VM
   gc("instances attach-disk $name --disk $diskname --mode $mode --device-name $diskname")
@@ -105,8 +116,8 @@ def attach_disk (vmname="$VMNAME",diskname="${vmname}-$mount",size="$DATADISKSIZ
   info("attached disk $diskname as $name:$mount ($mode)")
 
 
-def detach_disk (vmname="$VMNAME",diskname="${vmname}-data"):
-  name,diskname = interpolate_locals("vmname diskname")
+def detach_disk (mount="data",vmname="$VMNAME",diskname="${vmname}-$mount"):
+  name,diskname,mount = interpolate_locals("vmname diskname mount")
   gc("instances detach-disk $name --disk $diskname")
   info("detached disk $diskname from VM $name")
 
@@ -114,8 +125,30 @@ def detach_disk (vmname="$VMNAME",diskname="${vmname}-data"):
 def get_vms ():
   return dict([ x.split(None,1) for x in gcr("instances list").split("\n")[1:] if x])
 
+def list_vms ():
+  gc("instances list");
+  # vms = get_vms().items();
+  # for name,data in sorted(vms):
+  #   info("VM $name: $data");
+
+def get_snapshots (pattern="*"):
+  a = [ x.split(None,1) for x in gcr1("snapshots list").split("\n")[1:] if x ];
+  return dict([ x for x in a if fnmatch.fnmatch(x[0],pattern) ]);
+
+def list_snapshots ():
+  gc1("snapshots list");
+
 def get_disks ():
   return dict([ x.split(None,1) for x in gcr("disks list").split("\n")[1:] if x])
+
+def list_disks ():
+  gc("disks list");
+  # vms = get_disks().items();
+  # for name,data in sorted(vms):
+  #   info("disk $name: $data");
+
+def list_machine_types ():
+  gc("machine-types list");
 
 def delete_disk (*disknames):
   for disk in disknames:

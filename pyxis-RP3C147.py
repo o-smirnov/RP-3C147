@@ -484,4 +484,10 @@ def addnoise (noise=0,rowchunk=100000):
   args = [ """${ms.MS_TDL} ${ms.CHAN_TDL} ms_sel.ms_ifr_subset_str=${ms.IFRS} noise_stddev=%g"""%noise ];
   mqt.run("${mqt.CATTERY}/Siamese/turbo-sim.py","simulate",section="addnoise",args=args);
 
-  
+gcp = x.gsutil.args("cp");
+gcpo = xo.gsutil.args("cp");
+
+def wrapup ():
+  dest = "gs://oms/outputs/oms-jakob-1/"; 
+  gcpo("screenlog.0 /var/log/syslog* $OUTDIR/*txt $dest");
+  x.sh("sudo poweroff")
