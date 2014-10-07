@@ -127,7 +127,12 @@ LSM_CCMODEL_Template = "$DESTDIR/$LSMBASE$SUFFIX+ccmodel.fits"
 # this is a reference LSM from which we transfer dE tags
 LSMREF = "3C147-refmodel.lsm.html"
 
-LOG_Template = "${OUTDIR>/}log-${MS:BASE}$SUFFIX.txt"
+def LOG_Template ():
+  if exists("$MS"):
+    return II("${OUTDIR>/}log-${MS:BASE}$SUFFIX.txt");
+  else:
+    return II("${OUTDIR>/}log-$SUFFIX.txt");
+    
 DESTDIR_Template = "${OUTDIR>/}plots-${MS:BASE}$SUFFIX"
 OUTFILE_Template = "${DESTDIR>/}${MS:BASE}$SUFFIX${-s<STEP}${-<LABEL}"
 
@@ -269,7 +274,15 @@ def saveconf ():
   if OUTDIR and OUTDIR != ".":
     x.sh("cp pyxis-RP3C147.py pyxis-RP3C147.conf tdlconf.profiles $OUTDIR");
 
+## variables that control jointcal
+## uncomment to have smooth solutions 
 DE_SMOOTHING = 18,16
+DE_INTERVAL = 0,0
+## uncomment to have interval solutions
+# DE_INTERVAL = 18,16
+# DE_SMOOTHING = 0,0
+## set to True to reset solutions rather than reload 
+ALWAYS_RESET = False
 
 def jointcal (goto_step=1,last_step=10,lsmbase=None,STEPS=None):
   """Calibration for joint C and D-config data"""
@@ -401,20 +414,24 @@ def jointcal (goto_step=1,last_step=10,lsmbase=None,STEPS=None):
     makenoise();
     
 def jointcal_g ():
-  stefcal.stefcal(stefcal_reset_all=True,dirty=dict(wprojplanes=0,npix=NPIX),restore=False);
+  stefcal.stefcal(reset=True,dirty=dict(wprojplanes=0,npix=NPIX),restore=False);
   
 def jointcal_de_reset ():
-  stefcal.stefcal(stefcal_reset_all=True,diffgains=True,dirty=dict(wprojplanes=0,npix=NPIX),restore=False);
+  stefcal.stefcal(reset=True,diffgains=True,dirty=dict(wprojplanes=0,npix=NPIX),restore=False);
     
 def jointcal_de_apply ():
-  stefcal.stefcal(diffgains=True,diffgain_apply_only=True,
-    dirty=dict(wprojplanes=0,npix=NPIX),restore=False);
+  stefcal.stefcal(gain_reset=ALWAYS_RESET,
+                  diffgains=True,diffgain_apply_only=True,
+                  dirty=dict(wprojplanes=0,npix=NPIX),restore=False);
 
 def jointcal_de ():
-  stefcal.stefcal(diffgains=True,dirty=dict(wprojplanes=0,npix=NPIX),restore=False);
+  stefcal.stefcal(gain_reset=ALWAYS_RESET,diffgain_reset=ALWAYS_RESET,
+                  diffgains=True,dirty=dict(wprojplanes=0,npix=NPIX),restore=False);
 
 def jointcal_de_final ():
-  stefcal.stefcal(diffgains=True,dirty=dict(wprojplanes=0,npix=NPIX),restore=False); # ,options=dict(stefcal_diagonal_ifr_gains='full'))  
+  stefcal.stefcal(gain_reset=ALWAYS_RESET,diffgain_reset=ALWAYS_RESET,
+                  diffgains=True,dirty=dict(wprojplanes=0,npix=NPIX),restore=False); 
+                  # ,options=dict(stefcal_diagonal_ifr_gains='full'))  
 
 def makecube (npix=512,stokes="I"):
   imager.make_image(channelize=1,dirty_image="$OUTFILE.cube.fits",npix=npix,wprojplanes=0,stokes=stokes);
@@ -484,10 +501,32 @@ def addnoise (noise=0,rowchunk=100000):
   args = [ """${ms.MS_TDL} ${ms.CHAN_TDL} ms_sel.ms_ifr_subset_str=${ms.IFRS} noise_stddev=%g"""%noise ];
   mqt.run("${mqt.CATTERY}/Siamese/turbo-sim.py","simulate",section="addnoise",args=args);
 
-gcp = x.gsutil.args("cp");
-gcpo = xo.gsutil.args("cp");
+import gce
 
-def wrapup ():
-  dest = "gs://oms/outputs/oms-jakob-1/"; 
-  gcpo("screenlog.0 /var/log/syslog* $OUTDIR/*txt $dest");
-  x.sh("sudo poweroff")
+def _update_remote_repo ():
+  if not exists("data/RP-3C147"):
+    x.sh("cd data; git clone https://github.com/o-smirnov/RP-3C147.git");
+
+def runvm ():
+  v.LOG = "pyxis-vm.log"
+  gce.init_vm(vmtype='n1-highmem-16');
+  gce.attach_disk('data',size=200);
+  gce.attach_disk('ms',snapshot='oms-3c147-ms',ssd=True);
+  gce.rpyxis("_update_remote_repo")
+  gce.rpyxis("../../ms/3C147-CD-LO.MS DE_SMOOTHING=18,16 jointcal",dir="data/RP-3C147",bg=True,wrapup=True);
+
+def runvm1 ():
+  v.LOG = "pyxis-vm.log"
+  gce.init_vm(vmtype='n1-highmem-16');
+  gce.attach_disk('data',size=200);
+  gce.attach_disk('ms',snapshot='oms-3c147-ms',ssd=True);
+  gce.rpyxis("_update_remote_repo")
+  gce.rpyxis("../../ms/3C147-CD-LO.MS DE_INTERVAL=18,16 DE_SMOOTHING=0,0 ALWAYS_RESET=True jointcal",dir="data/RP-3C147",bg=True,wrapup=True);
+
+def runvm1a ():
+  gce.rpyxis("../../ms/3C147-CD-LO.MS DE_SMOOTHING=18,16 jointcal",dir="data/RP-3C147",bg=True,wrapup=True);
+
+def runvm2a ():
+  gce.rpyxis("info[bye]",dir="data/RP-3C147",bg=True,wrapup=True);
+
+

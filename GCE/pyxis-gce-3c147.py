@@ -17,6 +17,10 @@ gcr = xr.gcloud.args(before="compute --project $PROJECT",after="--zone $COMPZONE
 gcr1 = xr.gcloud.args(before="compute --project $PROJECT");
 gcro = xro.gcloud.args(before="compute --project $PROJECT",after="--zone $COMPZONE");
 
+# gsutil cp executables
+gcp = x.gsutil.args("cp");
+gcpo = xo.gsutil.args("cp");
+
 define('SNAPSHOT',"oms-papino-8","snapshot on which boot disk is to be based")
 define('DATADISKSIZE',200,"default data disk size (in Gb) for VM instances")
 define('VMTYPE',"n1-standard-1","default VM type")
@@ -160,3 +164,7 @@ def delete_vm (vmname="$VMNAME"):
   gc("instances delete $name --quiet");
   info("deleted VM instance $name");
 
+def wrapup ():
+  dest = "gs://oms/outputs/oms-jakob-1/"; 
+  gcpo("screenlog.0 /var/log/syslog* $OUTDIR/*txt $dest");
+  x.sh("sudo poweroff")
