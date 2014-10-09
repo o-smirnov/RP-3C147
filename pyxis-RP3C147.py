@@ -275,12 +275,13 @@ def saveconf ():
     x.sh("cp pyxis-RP3C147.py pyxis-RP3C147.conf tdlconf.profiles $OUTDIR");
 
 ## variables that control jointcal
-## uncomment to have smooth solutions 
 DE_SMOOTHING = 18,16
-DE_INTERVAL = 0,0
-## uncomment to have interval solutions
+DE_INTERVAL = None    
+TILE = 10                  # number of intervals per tile to process, if interval is in use
+
+## uncomment to have interval solutions instead
 # DE_INTERVAL = 18,16
-# DE_SMOOTHING = 0,0
+
 ## set to True to reset solutions rather than reload 
 ALWAYS_RESET = False
 
@@ -300,7 +301,10 @@ def jointcal (goto_step=1,last_step=10,lsmbase=None,STEPS=None):
   LSM_CCMODEL = II("$DESTDIR/$LSMBASE$SUFFIX+ccmodel.fits");
   saveconf()
 
-  stefcal.STEFCAL_DIFFGAIN_SMOOTHING = DE_SMOOTHING;
+  stefcal.STEFCAL_DIFFGAIN_SMOOTHING = DE_SMOOTHING if not DE_INTERVAL else None;
+  stefcal.STEFCAL_DIFFGAIN_INTERVAL = DE_INTERVAL;
+  if DE_INTERVAL and TILE:
+    stefcal.STEFCAL_TDLOPTS = "mssel.tile_size=%d"%(TILE*DE_INTERVAL[0]);
 
   # make MS list from sub-MSs
   import glob
@@ -509,19 +513,17 @@ def _update_remote_repo ():
 
 def runvm ():
   v.LOG = "pyxis-vm.log"
-  gce.init_vm(vmtype='n1-highmem-16');
-  gce.attach_disk('data',size=200);
-  gce.attach_disk('ms',snapshot='oms-3c147-ms',ssd=True);
+  gce.init_vm(vmtype='n1-highmem-16',provision=False,attach_data=200,attach_ms=dict(snapshot='oms-3c147-ms',ssd=True));
   gce.rpyxis("_update_remote_repo")
+  gce.provision_vm(dir="data/RP-3C147");
   gce.rpyxis("../../ms/3C147-CD-LO.MS DE_SMOOTHING=18,16 jointcal",dir="data/RP-3C147",bg=True,wrapup=True);
 
 def runvm1 ():
   v.LOG = "pyxis-vm.log"
-  gce.init_vm(vmtype='n1-highmem-16');
-  gce.attach_disk('data',size=200);
-  gce.attach_disk('ms',snapshot='oms-3c147-ms',ssd=True);
+  gce.init_vm(vmtype='n1-highmem-16',provision=False,attach_data=200,attach_ms=dict(snapshot='oms-3c147-ms',ssd=True));
   gce.rpyxis("_update_remote_repo")
-  gce.rpyxis("../../ms/3C147-CD-LO.MS DE_INTERVAL=18,16 DE_SMOOTHING=0,0 ALWAYS_RESET=True jointcal",dir="data/RP-3C147",bg=True,wrapup=True);
+  gce.provision_vm(dir="data/RP-3C147");
+  gce.rpyxis("../../ms/3C147-CD-LO.MS DE_INTERVAL=18,16 ALWAYS_RESET=True jointcal",dir="data/RP-3C147",bg=True,wrapup=True);
 
 def runvm1a ():
   gce.rpyxis("../../ms/3C147-CD-LO.MS DE_SMOOTHING=18,16 jointcal",dir="data/RP-3C147",bg=True,wrapup=True);
