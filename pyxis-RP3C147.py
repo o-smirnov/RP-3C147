@@ -421,7 +421,8 @@ def jointcal_g ():
   stefcal.stefcal(reset=True,dirty=dict(wprojplanes=0,npix=NPIX),restore=False);
   
 def jointcal_de_reset ():
-  stefcal.stefcal(reset=True,diffgains=True,dirty=dict(wprojplanes=0,npix=NPIX),restore=False);
+  stefcal.stefcal(gain_reset=True,diffgain_reset=True,
+                  diffgains=True,dirty=dict(wprojplanes=0,npix=NPIX),restore=False);
     
 def jointcal_de_apply ():
   stefcal.stefcal(gain_reset=ALWAYS_RESET,
