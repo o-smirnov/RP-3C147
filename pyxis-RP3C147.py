@@ -510,9 +510,7 @@ import gce
 VMTYPE = 'n1-highmem-16';
 
 def _update_remote_repo ():
-  gce.rsh("cd data; git clone https://github.com/o-smirnov/RP-3C147.git");
-
-
+  gce.rsh("cd data; if [ -d RP-3C147 ]; then git -C RP-3C147 pull; else git clone https://github.com/o-smirnov/RP-3C147.git; fi");
 
 def runvm ():
   v.LOG = "pyxis-vm.log"
