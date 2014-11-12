@@ -533,4 +533,11 @@ def runvm1a ():
 def runvm2a ():
   gce.rpyxis("info[bye]",dir="data/RP-3C147",bg=True,wrapup=True);
 
+def runvm2b ():
+  v.LOG = "pyxis-vm.log"
+  gce.init_vm(vmtype=VMTYPE,propagate=False,attach_data=200,attach_ms=dict(snapshot='oms-3c147-ms',ssd=True));
+  _update_remote_repo();
+  gce.propagate_scripts(dir="data/RP-3C147");
+  gce.rpyxis("info[bye]",dir="data/RP-3C147",bg=True);
+
 
